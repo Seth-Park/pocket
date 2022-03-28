@@ -64,9 +64,10 @@ class DistributedLearningEngine(State):
 
         self._rank = dist.get_rank()
         self._world_size = dist.get_world_size()
-        self._device = torch.device(device) if device is not None else torch.device(self._rank)
+        self._device = self._rank % torch.cuda.device_count()
         # Set the default device
         # NOTE Removing this line causes non-master subprocesses stuck at data loading
+        print(f"rank {self._rank} with device {self._device}")
         torch.cuda.set_device(self._device)
 
         self._criterion = criterion if not isinstance(criterion, torch.nn.Module) \
@@ -76,8 +77,9 @@ class DistributedLearningEngine(State):
         self._print_interval = print_interval
         self._use_amp = use_amp
         self._cache_dir = cache_dir
-        if not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
+        if self._rank == 0:
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
 
         # Relocate model to designated device
         net.cuda()
@@ -102,6 +104,7 @@ class DistributedLearningEngine(State):
 
         self._state.net = torch.nn.parallel.DistributedDataParallel(
             net, device_ids=[self._device],
+            output_device=self._device,
             find_unused_parameters=find_unused_parameters
         )
 
